@@ -1,0 +1,32 @@
+{
+  "name": "@webenta/mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Webenta Index — give Claude full control over your project data",
+  "type": "module",
+  "bin": {
+    "webenta-mcp": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": ["mcp", "webenta", "claude", "ai", "database"],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "files": ["dist", "README.md"],
+  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Webenta/index-mcp.git"
+  }
+}
