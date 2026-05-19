@@ -94,12 +94,20 @@ const tools = [
   },
   {
     name: 'aggregate',
-    description: 'Run sum/count/avg/min/max with optional group_by + date_trunc bucket. Returns rows of { group_value?, value }.',
+    description: 'Run sum/count/avg/min/max with optional group_by, date_trunc bucket, or JOIN to a lookup table for labels. Returns rows of { group_value?, value }.',
     schema: z.object({
       table: z.string(),
       op: z.enum(['count', 'sum', 'avg', 'min', 'max']),
       column: z.string().optional(),
-      groupBy: z.object({ column: z.string(), bucket: z.enum(['day', 'week', 'month', 'year']).optional() }).optional(),
+      groupBy: z.object({
+        column: z.string(),
+        bucket: z.enum(['day', 'week', 'month', 'year']).optional(),
+        join: z.object({
+          table: z.string(),
+          on: z.string(),
+          label: z.string()
+        }).optional()
+      }).optional(),
       filter: Filter.optional(),
       orderBy: z.enum(['group_asc', 'group_desc', 'value_asc', 'value_desc']).optional(),
       limit: z.number().int().min(1).max(10000).optional()
@@ -112,7 +120,7 @@ const tools = [
   },
   {
     name: 'set_dashboard',
-    description: "Replace the entire dashboard layout. Each widget: { id, w (1-12), type (bar|line|area|number|table), config: { title?, table, op, column?, groupBy?, filter? } }.",
+    description: "Replace the entire dashboard layout. Each widget: { id, w (1-12), type (bar|line|area|number|table), config: { title?, table, op, column?, groupBy?: { column, bucket?, join?: { table, on, label } }, filter?, orderBy?, limit? } }.",
     schema: z.object({ layout: z.array(z.any()) })
   },
   {
