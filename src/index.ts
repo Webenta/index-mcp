@@ -120,7 +120,7 @@ const tools = [
   },
   {
     name: 'set_dashboard',
-    description: "Replace the entire dashboard layout. Each widget: { id, w (1-12), type (bar|line|area|number|table), config: { title?, table, op, column?, groupBy?: { column, bucket?, join?: { table, on, label } }, filter?, orderBy?, limit? } }.",
+    description: "Replace the entire dashboard layout. Each widget: { id, w (1-12), type (bar|line|area|pie|number|table), config: { title?, table, op, column?, groupBy?: { column, bucket?, join?: { table, on, label } }, filter?, orderBy?, limit? } }. bar/line/area/pie need a groupBy (pie = one slice per group). number is a single KPI; table lists rows.",
     schema: z.object({ layout: z.array(z.any()) })
   },
   {
