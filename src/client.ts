@@ -32,10 +32,30 @@ export async function api<T = unknown>(
   return parsed as T;
 }
 
-let _projectId: string | null = null;
-export async function currentProjectId(): Promise<string> {
-  if (_projectId) return _projectId;
-  const r = await api<{ projectId: string }>('GET', '/api/v1/whoami-key');
-  _projectId = r.projectId;
-  return _projectId;
+export interface KeyInfo {
+  scope: 'global' | 'project';
+  projectId: string | null;
+}
+
+let _info: KeyInfo | null = null;
+export async function keyInfo(): Promise<KeyInfo> {
+  if (_info) return _info;
+  _info = await api<KeyInfo>('GET', '/api/v1/whoami-key');
+  return _info;
+}
+
+export async function resolveProjectId(argProjectId: string | undefined): Promise<string> {
+  const info = await keyInfo();
+  if (info.scope === 'project') {
+    if (!info.projectId) throw new Error('api key has no project bound');
+    return info.projectId;
+  }
+  if (!argProjectId) {
+    const err = new Error(
+      'projectId is required for global API keys — call list_projects to discover available project ids'
+    );
+    (err as any).status = 400;
+    throw err;
+  }
+  return argProjectId;
 }

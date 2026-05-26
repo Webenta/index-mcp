@@ -7,7 +7,9 @@ import {
   ListToolsRequestSchema
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { api, currentProjectId } from './client.js';
+import { api, resolveProjectId } from './client.js';
+
+const PID_NOTE = ' For global API keys, pass `projectId`; project-scoped keys ignore it.';
 
 const server = new Server(
   { name: 'webenta', version: '0.1.0' },
@@ -30,51 +32,64 @@ const Filter: z.ZodType = z.lazy(() =>
   ])
 );
 
+const pid = z.string().optional();
+
 const tools = [
   {
-    name: 'get_project_info',
-    description: 'Get the current project: name, storage usage, plan, and limits. ALWAYS call this first if you are about to do bulk inserts.',
+    name: 'list_projects',
+    description: 'List all projects accessible with this API key. Project-scoped keys return their single project; global keys return every project the owning account has. Call this first when using a global key to discover project ids.',
     schema: z.object({})
+  },
+  {
+    name: 'get_project_instructions',
+    description: 'Get the project-specific agent instructions written by the project owner. The server automatically returns these once per session attached to your first tool call, but call this tool explicitly to re-read them at any time.' + PID_NOTE,
+    schema: z.object({ projectId: pid })
+  },
+  {
+    name: 'get_project_info',
+    description: 'Get a project: name, storage usage, plan, and limits. ALWAYS call this first if you are about to do bulk inserts.' + PID_NOTE,
+    schema: z.object({ projectId: pid })
   },
   {
     name: 'list_tables',
-    description: 'List all user-defined tables with column definitions, row count and byte size.',
-    schema: z.object({})
+    description: 'List all user-defined tables with column definitions, row count and byte size.' + PID_NOTE,
+    schema: z.object({ projectId: pid })
   },
   {
     name: 'create_table',
-    description: 'Create a new table. Implicit id (bigserial PK) and created_at (timestamptz default now()) are added automatically.',
-    schema: z.object({ name: z.string(), columns: z.array(ColumnDef) })
+    description: 'Create a new table. Implicit id (bigserial PK) and created_at (timestamptz default now()) are added automatically.' + PID_NOTE,
+    schema: z.object({ projectId: pid, name: z.string(), columns: z.array(ColumnDef) })
   },
   {
     name: 'drop_table',
-    description: 'Drop a table (irreversible).',
-    schema: z.object({ name: z.string() })
+    description: 'Drop a table (irreversible).' + PID_NOTE,
+    schema: z.object({ projectId: pid, name: z.string() })
   },
   {
     name: 'add_column',
-    description: 'Add a column to an existing table.',
-    schema: z.object({ table: z.string(), column: ColumnDef })
+    description: 'Add a column to an existing table.' + PID_NOTE,
+    schema: z.object({ projectId: pid, table: z.string(), column: ColumnDef })
   },
   {
     name: 'rename_column',
-    description: 'Rename a column.',
-    schema: z.object({ table: z.string(), from: z.string(), to: z.string() })
+    description: 'Rename a column.' + PID_NOTE,
+    schema: z.object({ projectId: pid, table: z.string(), from: z.string(), to: z.string() })
   },
   {
     name: 'drop_column',
-    description: 'Drop a column from a table.',
-    schema: z.object({ table: z.string(), column: z.string() })
+    description: 'Drop a column from a table.' + PID_NOTE,
+    schema: z.object({ projectId: pid, table: z.string(), column: z.string() })
   },
   {
     name: 'insert_rows',
-    description: 'Insert one or more rows. Returns inserted ids. Each row is an object keyed by column name; missing columns are null. id and created_at are auto-set.',
-    schema: z.object({ table: z.string(), rows: z.array(z.record(z.any())).min(1) })
+    description: 'Insert one or more rows. Returns inserted ids. Each row is an object keyed by column name; missing columns are null. id and created_at are auto-set.' + PID_NOTE,
+    schema: z.object({ projectId: pid, table: z.string(), rows: z.array(z.record(z.any())).min(1) })
   },
   {
     name: 'query_rows',
-    description: 'Query rows with optional filter, ordering and pagination. Default limit 100, max 1000.',
+    description: 'Query rows with optional filter, ordering and pagination. Default limit 100, max 1000.' + PID_NOTE,
     schema: z.object({
+      projectId: pid,
       table: z.string(),
       filter: Filter.optional(),
       orderBy: z.object({ column: z.string(), direction: z.enum(['asc', 'desc']).optional() }).optional(),
@@ -84,18 +99,19 @@ const tools = [
   },
   {
     name: 'update_row',
-    description: 'Update a single row by id.',
-    schema: z.object({ table: z.string(), id: z.number(), values: z.record(z.any()) })
+    description: 'Update a single row by id.' + PID_NOTE,
+    schema: z.object({ projectId: pid, table: z.string(), id: z.number(), values: z.record(z.any()) })
   },
   {
     name: 'delete_row',
-    description: 'Delete a single row by id.',
-    schema: z.object({ table: z.string(), id: z.number() })
+    description: 'Delete a single row by id.' + PID_NOTE,
+    schema: z.object({ projectId: pid, table: z.string(), id: z.number() })
   },
   {
     name: 'aggregate',
-    description: 'Run sum/count/avg/min/max with optional group_by, date_trunc bucket, or JOIN to a lookup table for labels. Returns rows of { group_value?, value }.',
+    description: 'Run sum/count/avg/min/max with optional group_by, date_trunc bucket, or JOIN to a lookup table for labels. Returns rows of { group_value?, value }.' + PID_NOTE,
     schema: z.object({
+      projectId: pid,
       table: z.string(),
       op: z.enum(['count', 'sum', 'avg', 'min', 'max']),
       column: z.string().optional(),
@@ -115,23 +131,23 @@ const tools = [
   },
   {
     name: 'get_dashboard',
-    description: "Get the project's dashboard widget layout.",
-    schema: z.object({})
+    description: "Get the project's dashboard widget layout." + PID_NOTE,
+    schema: z.object({ projectId: pid })
   },
   {
     name: 'set_dashboard',
-    description: "Replace the entire dashboard layout. Each widget: { id, w (1-12), type (bar|line|area|pie|number|table), config: { title?, table, op, column?, groupBy?: { column, bucket?, join?: { table, on, label } }, filter?, orderBy?, limit? } }. bar/line/area/pie need a groupBy (pie = one slice per group). number is a single KPI; table lists rows.",
-    schema: z.object({ layout: z.array(z.any()) })
+    description: "Replace the entire dashboard layout. Each widget: { id, w (1-12), type (bar|line|area|pie|number|table), config: { title?, table, op, column?, groupBy?: { column, bucket?, join?: { table, on, label } }, filter?, orderBy?, limit? } }. bar/line/area/pie need a groupBy (pie = one slice per group). number is a single KPI; table lists rows." + PID_NOTE,
+    schema: z.object({ projectId: pid, layout: z.array(z.any()) })
   },
   {
     name: 'add_widget',
-    description: 'Append a widget to the dashboard. Generates an id if missing.',
-    schema: z.object({ widget: z.any() })
+    description: 'Append a widget to the dashboard. Generates an id if missing.' + PID_NOTE,
+    schema: z.object({ projectId: pid, widget: z.any() })
   },
   {
     name: 'remove_widget',
-    description: 'Remove a widget by id from the dashboard.',
-    schema: z.object({ id: z.string() })
+    description: 'Remove a widget by id from the dashboard.' + PID_NOTE,
+    schema: z.object({ projectId: pid, id: z.string() })
   }
 ] as const;
 
@@ -143,18 +159,61 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   }))
 }));
 
+// Tracks which (project) sessions have already received the auto-injected
+// instructions banner. In stdio mode this is the lifetime of the process —
+// one session per client launch.
+const instructionsDelivered = new Set<string>();
+
+async function fetchInstructions(pid: string): Promise<string> {
+  try {
+    const info = await api<{ instructions?: string }>('GET', `/api/v1/projects/${pid}/instructions`);
+    return (info.instructions ?? '').trim();
+  } catch {
+    return '';
+  }
+}
+
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const tool = tools.find((t) => t.name === req.params.name);
   if (!tool) throw new Error(`Unknown tool: ${req.params.name}`);
   const parsed = tool.schema.parse(req.params.arguments ?? {});
-  const pid = await currentProjectId();
+
+  if (tool.name === 'list_projects') {
+    const list = await api('GET', '/api/v1/projects');
+    return { content: [{ type: 'text', text: JSON.stringify(list, null, 2) }] };
+  }
+
+  const pid = await resolveProjectId((parsed as any).projectId);
+
+  if (tool.name === 'get_project_instructions') {
+    const instructions = await fetchInstructions(pid);
+    instructionsDelivered.add(pid);
+    return { content: [{ type: 'text', text: instructions || '(no project instructions set)' }] };
+  }
+
   const out = await dispatch(tool.name, pid, parsed);
-  return { content: [{ type: 'text', text: JSON.stringify(out, null, 2) }] };
+  const body = JSON.stringify(out, null, 2);
+
+  if (!instructionsDelivered.has(pid)) {
+    instructionsDelivered.add(pid);
+    const instructions = await fetchInstructions(pid);
+    if (instructions) {
+      const banner =
+        `=== PROJECT INSTRUCTIONS (read these before continuing — written by the project owner) ===\n` +
+        `${instructions}\n` +
+        `=== END PROJECT INSTRUCTIONS ===\n\n` +
+        `--- tool result for ${tool.name} ---\n`;
+      return { content: [{ type: 'text', text: banner + body }] };
+    }
+  }
+
+  return { content: [{ type: 'text', text: body }] };
 });
 
 async function dispatch(name: string, pid: string, args: any): Promise<unknown> {
   const base = `/api/v1/projects/${pid}`;
   switch (name) {
+    case 'get_project_instructions': return api('GET', `${base}/instructions`);
     case 'get_project_info': return api('GET', `${base}/info`);
     case 'list_tables':      return api('GET', `${base}/tables`);
     case 'create_table':     return api('POST', `${base}/tables`, args);
