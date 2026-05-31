@@ -136,7 +136,7 @@ const tools = [
   },
   {
     name: 'set_dashboard',
-    description: "Replace the entire dashboard layout. Each widget: { id, w (1-12), type (bar|line|area|pie|number|table), config: { title?, table, op, column?, groupBy?: { column, bucket?, join?: { table, on, label } }, filter?, orderBy?, limit? } }. bar/line/area/pie need a groupBy (pie = one slice per group). number is a single KPI; table lists rows." + PID_NOTE,
+    description: "Replace the entire dashboard layout. Each widget: { id, w (1-12), type (bar|line|area|pie|number|table|calendar), config: { title?, table, op, column?, groupBy?: { column, bucket?, join?: { table, on, label } }, filter?, orderBy?, limit?, calBucket? } }. bar/line/area/pie need a groupBy (pie = one slice per group). number is a single KPI; table lists rows. calendar is a GitHub-style contribution heatmap on a date/timestamp column: set config.calBucket to 'day' (7-row grid), 'week' (13-col wraps), or 'month' (12-col year-per-row grid) — that's it. The number of visible cells is derived purely from the rendered container width (never stored), and the user can page back/forward in the widget itself. groupBy.bucket must match calBucket. op selects the value (use 'count' for activity, or sum/avg/etc. of a numeric column). Intensity ramps 0→max using the brand orange." + PID_NOTE,
     schema: z.object({ projectId: pid, layout: z.array(z.any()) })
   },
   {
