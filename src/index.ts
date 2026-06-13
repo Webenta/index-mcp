@@ -109,7 +109,13 @@ const tools = [
   },
   {
     name: 'aggregate',
-    description: 'Run sum/count/avg/min/max with optional group_by, date_trunc bucket, or JOIN to a lookup table for labels. Returns rows of { group_value?, value }.' + PID_NOTE,
+    description:
+      'Run sum/count/avg/min/max with optional group_by, date_trunc bucket, or JOIN to a lookup table for labels. Returns rows of { group_value?, value }. ' +
+      'To fold several tables into ONE series — e.g. an "active days" calendar that counts every row in `sets` AND every row in `runs` per day — pass `union`: a list of extra tables that get UNION ALL-ed in before aggregating. ' +
+      'Each union source is { table, column (its own group/date column, plays the role of groupBy.column), valueColumn? (its numeric column, required only for sum/avg/min/max) }. ' +
+      'union requires groupBy; the bucket (day/week/month/year) applies to every table; for op=count no valueColumn is needed (each row counts as 1). ' +
+      'Keep it simple: top-level `filter` and groupBy.join are ignored when union is set (group columns differ per table). ' +
+      'Pass `reduce` to collapse a grouped result into ONE scalar — it aggregates per group, then folds the groups. e.g. groupBy day + op count + reduce avg = "average sets per day"; reduce max = "best day". Requires groupBy; returns a single { value } row. This is how a number widget shows a per-period KPI.' + PID_NOTE,
     schema: z.object({
       projectId: pid,
       table: z.string(),
@@ -124,6 +130,12 @@ const tools = [
           label: z.string()
         }).optional()
       }).optional(),
+      union: z.array(z.object({
+        table: z.string(),
+        column: z.string(),
+        valueColumn: z.string().optional()
+      })).optional(),
+      reduce: z.enum(['count', 'sum', 'avg', 'min', 'max']).optional(),
       filter: Filter.optional(),
       orderBy: z.enum(['group_asc', 'group_desc', 'value_asc', 'value_desc']).optional(),
       limit: z.number().int().min(1).max(10000).optional()
@@ -136,7 +148,7 @@ const tools = [
   },
   {
     name: 'set_dashboard',
-    description: "Replace the entire dashboard layout. Each widget: { id, w (1-12), type (bar|line|area|pie|number|table|calendar), config: { title?, table, op, column?, groupBy?: { column, bucket?, join?: { table, on, label } }, filter?, orderBy?, limit?, calBucket? } }. bar/line/area/pie need a groupBy (pie = one slice per group). number is a single KPI; table lists rows. calendar is a GitHub-style contribution heatmap on a date/timestamp column: set config.calBucket to 'day' (7-row grid), 'week' (13-col wraps), or 'month' (12-col year-per-row grid) — that's it. The number of visible cells is derived purely from the rendered container width (never stored), and the user can page back/forward in the widget itself. groupBy.bucket must match calBucket. op selects the value (use 'count' for activity, or sum/avg/etc. of a numeric column). Intensity ramps 0→max using the brand orange." + PID_NOTE,
+    description: "Replace the entire dashboard layout. Each widget: { id, w (1-12), type (bar|line|area|pie|number|table|calendar), config: { title?, table, op, column?, groupBy?: { column, bucket?, join?: { table, on, label } }, union?: [{ table, column, valueColumn? }], reduce?, filter?, orderBy?, limit?, calBucket? } }. bar/line/area/pie need a groupBy (pie = one slice per group). number is a single KPI: leave groupBy off for a plain total/avg, OR add groupBy with a bucket + config.reduce (default avg) for a per-period KPI like 'avg sets per day' (count per day, then avg). table lists rows. calendar is a GitHub-style contribution heatmap on a date/timestamp column: set config.calBucket to 'day' (7-row grid), 'week' (13-col wraps), or 'month' (12-col year-per-row grid) — that's it. The number of visible cells is derived purely from the rendered container width (never stored), and the user can page back/forward in the widget itself. groupBy.bucket must match calBucket. op selects the value (use 'count' for activity, or sum/avg/etc. of a numeric column). Intensity ramps 0→max using the brand orange. To merge multiple tables into one widget (e.g. an activity calendar counting `sets` + `runs` together), add config.union (same shape as the aggregate tool's union) — works for calendar/bar/line/area/pie, ignored for number. Each union source maps its own date column." + PID_NOTE,
     schema: z.object({ projectId: pid, layout: z.array(z.any()) })
   },
   {
