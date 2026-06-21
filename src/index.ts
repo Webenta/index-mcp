@@ -158,31 +158,36 @@ const tools = [
           groupColumn: z.string(),
           op: z.enum(['count', 'sum', 'avg', 'min', 'max']),
           valueColumn: z.string().optional(),
-          coefficient: z.number().optional()
+          coefficient: z.number().optional(),
+          filter: Filter.optional()
         })).min(1)
       }).optional()
     })
   },
   {
     name: 'get_dashboard',
-    description: "Get the project's dashboard widget layout." + PID_NOTE,
+    description: "Get the project's dashboard widget layout and variables. Returns { layout, variables, updatedAt }. `layout` is the array of widgets; `variables` is the array of dashboard variable definitions." + PID_NOTE,
     schema: z.object({ projectId: pid })
   },
   {
     name: 'set_dashboard',
     description:
-      "Replace the entire dashboard layout. Each widget: { id, w (1-12), type (bar|line|area|pie|number|table|calendar), config: { title?, table, op, column?, groupBy?, union?, reduce?, filter?, orderBy?, limit?, calBucket?, expr? } }. " +
+      "Replace the entire dashboard layout and variables. Each widget: { id, w (1-12), type (bar|line|area|pie|number|table|calendar), config: { title?, table, op, column?, groupBy?, union?, reduce?, filter?, orderBy?, limit?, calBucket?, expr? } }. " +
       "bar/line/area/pie need a groupBy (pie = one slice per group). number is a single KPI: leave groupBy off for a plain total/avg, OR add groupBy with a bucket + config.reduce (default avg) for a per-period KPI like 'avg sets per day'. table lists rows. " +
       "calendar is a GitHub-style contribution heatmap on a date/timestamp column: set config.calBucket to 'day', 'week', or 'month'. groupBy.bucket must match calBucket. op selects the value. " +
       "To merge multiple tables additively (e.g. activity heatmap of sets + runs together), use config.union: [{ table, column, valueColumn? }] — UNION ALL-ed before aggregating. " +
       "config.reduce collapses a bucketed series into ONE scalar for a number widget (avg = per-period average, max = best period, sum = grand total). " +
       "FOR CROSS-TABLE ARITHMETIC PER BUCKET (net calories, ratio, weighted combination): use config.expr instead of op/groupBy. " +
       "config.expr: { bucket ('day'|'week'|'month'|'year'), combineOp? ('sum'|'product'|'ratio'|'avg'), sources: ExprSource[] }. " +
-      "ExprSource: { table, groupColumn (the date column in that specific table), op, valueColumn? (for sum/avg/min/max), coefficient? (default 1; -1 subtracts in sum mode) }. " +
+      "ExprSource: { table, groupColumn (the date column in that specific table), op, valueColumn? (for sum/avg/min/max), coefficient? (default 1; -1 subtracts in sum mode), filter? (row-level filter applied inside this source before aggregating) }. " +
       "combineOp 'sum' (default): Σ(source.value × coefficient) — use coefficient:-1 to subtract; 'product': multiply all; 'ratio': s[0]/s[1] exactly 2 sources; 'avg': mean of all. " +
       "When expr is set, table/op/groupBy/union are ignored (set table=sources[0].table for display). " +
-      "Example net-calories bar chart: type:'bar', config:{ table:'food', expr:{ bucket:'day', sources:[{table:'food',groupColumn:'eaten_at',op:'sum',valueColumn:'kcal',coefficient:1},{table:'workouts',groupColumn:'started_at',op:'sum',valueColumn:'calories',coefficient:-1}] } }." + PID_NOTE,
-    schema: z.object({ projectId: pid, layout: z.array(z.any()) })
+      "Example net-calories bar chart: type:'bar', config:{ table:'food', expr:{ bucket:'day', sources:[{table:'food',groupColumn:'eaten_at',op:'sum',valueColumn:'kcal',coefficient:1},{table:'workouts',groupColumn:'started_at',op:'sum',valueColumn:'calories',coefficient:-1}] } }. " +
+      "VARIABLES: pass `variables` to define dashboard-level dynamic tokens. Two variable types: " +
+      "date-range: { id, type:'date-range', label, startVar, endVar, spanVar, defaultPreset } — exposes $startVar (ISO start), $endVar (ISO end), $spanVar (human span) tokens; defaultPreset is one of '7d'|'30d'|'90d'|'1y'|'yesterday'|'prev-month' etc. " +
+      "limit: { id, type:'limit', label, variable, defaultValue, options } — exposes $variable as a number. " +
+      "Reference tokens as bare strings in widget config (filter values, limit, title) e.g. filter: { column:'created_at', op:'gte', value:'$startDate' }, limit:'$topN'. The UI substitutes them at render time." + PID_NOTE,
+    schema: z.object({ projectId: pid, layout: z.array(z.any()), variables: z.array(z.any()).optional() })
   },
   {
     name: 'add_widget',
@@ -280,15 +285,15 @@ async function dispatch(name: string, pid: string, args: any): Promise<unknown> 
     case 'delete_row':    return api('DELETE', `${base}/tables/${enc(args.table)}/rows/${args.id}`);
     case 'aggregate':     return api('POST', `${base}/query/aggregate`, args);
     case 'get_dashboard': return api('GET', `${base}/dashboard`);
-    case 'set_dashboard': return api('PUT', `${base}/dashboard`, { layout: args.layout });
+    case 'set_dashboard': return api('PUT', `${base}/dashboard`, { layout: args.layout, variables: args.variables ?? [] });
     case 'add_widget': {
-      const cur = await api<{ layout: any[] }>('GET', `${base}/dashboard`);
+      const cur = await api<{ layout: any[]; variables: any[] }>('GET', `${base}/dashboard`);
       const w = { id: args.widget.id ?? crypto.randomUUID(), ...args.widget };
-      return api('PUT', `${base}/dashboard`, { layout: [...cur.layout, w] });
+      return api('PUT', `${base}/dashboard`, { layout: [...cur.layout, w], variables: cur.variables ?? [] });
     }
     case 'remove_widget': {
-      const cur = await api<{ layout: any[] }>('GET', `${base}/dashboard`);
-      return api('PUT', `${base}/dashboard`, { layout: cur.layout.filter((w) => w.id !== args.id) });
+      const cur = await api<{ layout: any[]; variables: any[] }>('GET', `${base}/dashboard`);
+      return api('PUT', `${base}/dashboard`, { layout: cur.layout.filter((w) => w.id !== args.id), variables: cur.variables ?? [] });
     }
     default: throw new Error(`Unhandled: ${name}`);
   }
