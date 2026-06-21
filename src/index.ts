@@ -115,11 +115,22 @@ const tools = [
       'Each union source is { table, column (its own group/date column, plays the role of groupBy.column), valueColumn? (its numeric column, required only for sum/avg/min/max) }. ' +
       'union requires groupBy; the bucket (day/week/month/year) applies to every table; for op=count no valueColumn is needed (each row counts as 1). ' +
       'Keep it simple: top-level `filter` and groupBy.join are ignored when union is set (group columns differ per table). ' +
-      'Pass `reduce` to collapse a grouped result into ONE scalar — it aggregates per group, then folds the groups. e.g. groupBy day + op count + reduce avg = "average sets per day"; reduce max = "best day". Requires groupBy; returns a single { value } row. This is how a number widget shows a per-period KPI.' + PID_NOTE,
+      'Pass `reduce` to collapse a grouped result into ONE scalar — it aggregates per group, then folds the groups. e.g. groupBy day + op count + reduce avg = "average sets per day"; reduce max = "best day". Requires groupBy; returns a single { value } row. This is how a number widget shows a per-period KPI. ' +
+      'For CROSS-TABLE ARITHMETIC PER BUCKET (e.g. "net calories = eaten − burned per day", "revenue ÷ sessions per week") pass `expr` instead of table/op/groupBy. ' +
+      '`expr` has: bucket (day/week/month/year), sources (array of ExprSource), and optional combineOp. ' +
+      'Each ExprSource: { table, groupColumn (date/timestamp column in that table), op (count/sum/avg/min/max), valueColumn? (required for sum/avg/min/max), coefficient? (default 1; set -1 to subtract in sum mode) }. ' +
+      'combineOp controls how per-bucket values from all sources are merged: ' +
+      '"sum" (default) — Σ(source.value × source.coefficient), supports N sources, negative coefficients = subtraction; ' +
+      '"product" — multiplies all source values together; ' +
+      '"ratio" — s[0] / s[1], requires exactly 2 sources, NULL-safe; ' +
+      '"avg" — arithmetic mean across all source values. ' +
+      'When `expr` is set, `table`/`op`/`groupBy`/`union`/`filter` are ignored. ' +
+      'Examples: net calories (sum+coefficient): sources=[{table:"food",groupColumn:"eaten_at",op:"sum",valueColumn:"kcal",coefficient:1},{table:"workouts",groupColumn:"started_at",op:"sum",valueColumn:"calories",coefficient:-1}]; ' +
+      'calorie ratio (ratio): combineOp:"ratio", sources=[{table:"food",...},{table:"workouts",...}].' + PID_NOTE,
     schema: z.object({
       projectId: pid,
       table: z.string(),
-      op: z.enum(['count', 'sum', 'avg', 'min', 'max']),
+      op: z.enum(['count', 'sum', 'avg', 'min', 'max']).optional(),
       column: z.string().optional(),
       groupBy: z.object({
         column: z.string(),
@@ -138,7 +149,18 @@ const tools = [
       reduce: z.enum(['count', 'sum', 'avg', 'min', 'max']).optional(),
       filter: Filter.optional(),
       orderBy: z.enum(['group_asc', 'group_desc', 'value_asc', 'value_desc']).optional(),
-      limit: z.number().int().min(1).max(10000).optional()
+      limit: z.number().int().min(1).max(10000).optional(),
+      expr: z.object({
+        bucket: z.enum(['day', 'week', 'month', 'year']),
+        combineOp: z.enum(['sum', 'product', 'ratio', 'avg']).optional(),
+        sources: z.array(z.object({
+          table: z.string(),
+          groupColumn: z.string(),
+          op: z.enum(['count', 'sum', 'avg', 'min', 'max']),
+          valueColumn: z.string().optional(),
+          coefficient: z.number().optional()
+        })).min(1)
+      }).optional()
     })
   },
   {
@@ -148,7 +170,18 @@ const tools = [
   },
   {
     name: 'set_dashboard',
-    description: "Replace the entire dashboard layout. Each widget: { id, w (1-12), type (bar|line|area|pie|number|table|calendar), config: { title?, table, op, column?, groupBy?: { column, bucket?, join?: { table, on, label } }, union?: [{ table, column, valueColumn? }], reduce?: count|sum|avg|min|max, filter?, orderBy?, limit?, calBucket? } }. bar/line/area/pie need a groupBy (pie = one slice per group). number is a single KPI: leave groupBy off for a plain total/avg, OR add groupBy with a bucket + config.reduce (default avg) for a per-period KPI like 'avg sets per day' (count per day, then avg). table lists rows. calendar is a GitHub-style contribution heatmap on a date/timestamp column: set config.calBucket to 'day' (7-row grid), 'week' (13-col wraps), or 'month' (12-col year-per-row grid) — that's it. The number of visible cells is derived purely from the rendered container width (never stored), and the user can page back/forward in the widget itself. groupBy.bucket must match calBucket. op selects the value (use 'count' for activity, or sum/avg/etc. of a numeric column). Intensity ramps 0→max using the brand orange. To merge multiple tables into one series (e.g. an activity calendar counting `sets` + `runs` together), add config.union: a list of { table, column (that table's own date/group column), valueColumn? (its numeric column, only for sum/avg/min/max) }, each UNION ALL-ed in before aggregating — works for calendar/bar/line/area/pie, ignored for number. config.reduce (count|sum|avg|min|max) collapses a bucketed series into ONE scalar for a number widget: aggregate per bucket, then fold the buckets — avg = per-period average ('avg sets per day'), max = best period, sum = grand total." + PID_NOTE,
+    description:
+      "Replace the entire dashboard layout. Each widget: { id, w (1-12), type (bar|line|area|pie|number|table|calendar), config: { title?, table, op, column?, groupBy?, union?, reduce?, filter?, orderBy?, limit?, calBucket?, expr? } }. " +
+      "bar/line/area/pie need a groupBy (pie = one slice per group). number is a single KPI: leave groupBy off for a plain total/avg, OR add groupBy with a bucket + config.reduce (default avg) for a per-period KPI like 'avg sets per day'. table lists rows. " +
+      "calendar is a GitHub-style contribution heatmap on a date/timestamp column: set config.calBucket to 'day', 'week', or 'month'. groupBy.bucket must match calBucket. op selects the value. " +
+      "To merge multiple tables additively (e.g. activity heatmap of sets + runs together), use config.union: [{ table, column, valueColumn? }] — UNION ALL-ed before aggregating. " +
+      "config.reduce collapses a bucketed series into ONE scalar for a number widget (avg = per-period average, max = best period, sum = grand total). " +
+      "FOR CROSS-TABLE ARITHMETIC PER BUCKET (net calories, ratio, weighted combination): use config.expr instead of op/groupBy. " +
+      "config.expr: { bucket ('day'|'week'|'month'|'year'), combineOp? ('sum'|'product'|'ratio'|'avg'), sources: ExprSource[] }. " +
+      "ExprSource: { table, groupColumn (the date column in that specific table), op, valueColumn? (for sum/avg/min/max), coefficient? (default 1; -1 subtracts in sum mode) }. " +
+      "combineOp 'sum' (default): Σ(source.value × coefficient) — use coefficient:-1 to subtract; 'product': multiply all; 'ratio': s[0]/s[1] exactly 2 sources; 'avg': mean of all. " +
+      "When expr is set, table/op/groupBy/union are ignored (set table=sources[0].table for display). " +
+      "Example net-calories bar chart: type:'bar', config:{ table:'food', expr:{ bucket:'day', sources:[{table:'food',groupColumn:'eaten_at',op:'sum',valueColumn:'kcal',coefficient:1},{table:'workouts',groupColumn:'started_at',op:'sum',valueColumn:'calories',coefficient:-1}] } }." + PID_NOTE,
     schema: z.object({ projectId: pid, layout: z.array(z.any()) })
   },
   {
