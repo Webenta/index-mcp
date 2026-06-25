@@ -57,7 +57,7 @@ Create `.mcp.json` at your project root:
       "args": ["-y", "@webenta/mcp"],
       "env": {
         "WEBENTA_API_URL": "https://index.webenta.sk",
-        "WEBENTA_API_KEY": "wk_live_YOUR_KEY_HERE"
+        "WEBENTA_INDEX_API_KEY": "wk_live_YOUR_KEY_HERE"
       }
     }
   }
@@ -94,7 +94,7 @@ claude mcp add webenta https://mcp.index.webenta.sk/mcp \
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `WEBENTA_API_URL` | `http://localhost:3000` | Base URL of your Webenta instance |
-| `WEBENTA_API_KEY` | _(required)_ | Your `wk_live_…` project API key |
+| `WEBENTA_INDEX_API_KEY` | _(required)_ | Your `wk_live_…` project API key |
 
 ---
 

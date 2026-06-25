@@ -1,9 +1,9 @@
 // Thin REST client used by every MCP tool.
 const API_URL = process.env.WEBENTA_API_URL ?? 'http://localhost:3000';
-const API_KEY = process.env.WEBENTA_API_KEY ?? '';
+const API_KEY = process.env.WEBENTA_INDEX_API_KEY ?? '';
 
 if (!API_KEY) {
-  console.error('WEBENTA_API_KEY is not set — every call will fail with 401.');
+  console.error('WEBENTA_INDEX_API_KEY is not set — every call will fail with 401.');
 }
 
 export async function api<T = unknown>(
