@@ -172,8 +172,9 @@ const tools = [
   {
     name: 'set_dashboard',
     description:
-      "Replace the entire dashboard layout and variables. Each widget: { id, w (1-12), type (bar|line|area|pie|number|table|calendar), config: { title?, table, op, column?, groupBy?, union?, reduce?, filter?, orderBy?, limit?, calBucket?, expr? } }. " +
+      "Replace the entire dashboard layout and variables. Each widget: { id, w (1-12), type (bar|line|area|pie|number|table|calendar), config: { title?, table, op, column?, groupBy?, union?, reduce?, filter?, orderBy?, limit?, calBucket?, expr?, limits? } }. " +
       "bar/line/area/pie need a groupBy (pie = one slice per group). number is a single KPI: leave groupBy off for a plain total/avg, OR add groupBy with a bucket + config.reduce (default avg) for a per-period KPI like 'avg sets per day'. table lists rows. " +
+      "Pie: config.limits={ maxItems?, minPercentage? } folds small slices into 'Other'; pair with orderBy:'value_desc'. " +
       "calendar is a GitHub-style contribution heatmap on a date/timestamp column: set config.calBucket to 'day', 'week', or 'month'. groupBy.bucket must match calBucket. op selects the value. " +
       "To merge multiple tables additively (e.g. activity heatmap of sets + runs together), use config.union: [{ table, column, valueColumn? }] — UNION ALL-ed before aggregating. " +
       "config.reduce collapses a bucketed series into ONE scalar for a number widget (avg = per-period average, max = best period, sum = grand total). " +
