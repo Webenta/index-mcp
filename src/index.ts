@@ -226,38 +226,50 @@ async function fetchInstructions(pid: string): Promise<string> {
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const tool = tools.find((t) => t.name === req.params.name);
   if (!tool) throw new Error(`Unknown tool: ${req.params.name}`);
-  const parsed = tool.schema.parse(req.params.arguments ?? {});
 
-  if (tool.name === 'list_projects') {
-    const list = await api('GET', '/api/v1/projects');
-    return { content: [{ type: 'text', text: JSON.stringify(list, null, 2) }] };
+  let parsed: any;
+  try {
+    parsed = tool.schema.parse(req.params.arguments ?? {});
+  } catch (e: any) {
+    return { isError: true, content: [{ type: 'text', text: `Invalid arguments: ${e.message}` }] };
   }
 
-  const pid = await resolveProjectId((parsed as any).projectId);
-
-  if (tool.name === 'get_project_instructions') {
-    const instructions = await fetchInstructions(pid);
-    instructionsDelivered.add(pid);
-    return { content: [{ type: 'text', text: instructions || '(no project instructions set)' }] };
-  }
-
-  const out = await dispatch(tool.name, pid, parsed);
-  const body = JSON.stringify(out, null, 2);
-
-  if (!instructionsDelivered.has(pid)) {
-    instructionsDelivered.add(pid);
-    const instructions = await fetchInstructions(pid);
-    if (instructions) {
-      const banner =
-        `=== PROJECT INSTRUCTIONS (read these before continuing — written by the project owner) ===\n` +
-        `${instructions}\n` +
-        `=== END PROJECT INSTRUCTIONS ===\n\n` +
-        `--- tool result for ${tool.name} ---\n`;
-      return { content: [{ type: 'text', text: banner + body }] };
+  try {
+    if (tool.name === 'list_projects') {
+      const list = await api('GET', '/api/v1/projects');
+      return { content: [{ type: 'text', text: JSON.stringify(list, null, 2) }] };
     }
-  }
 
-  return { content: [{ type: 'text', text: body }] };
+    const pid = await resolveProjectId((parsed as any).projectId);
+
+    if (tool.name === 'get_project_instructions') {
+      const instructions = await fetchInstructions(pid);
+      instructionsDelivered.add(pid);
+      return { content: [{ type: 'text', text: instructions || '(no project instructions set)' }] };
+    }
+
+    const out = await dispatch(tool.name, pid, parsed);
+    const body = JSON.stringify(out, null, 2);
+
+    if (!instructionsDelivered.has(pid)) {
+      instructionsDelivered.add(pid);
+      const instructions = await fetchInstructions(pid);
+      if (instructions) {
+        const banner =
+          `=== PROJECT INSTRUCTIONS (read these before continuing — written by the project owner) ===\n` +
+          `${instructions}\n` +
+          `=== END PROJECT INSTRUCTIONS ===\n\n` +
+          `--- tool result for ${tool.name} ---\n`;
+        return { content: [{ type: 'text', text: banner + body }] };
+      }
+    }
+
+    return { content: [{ type: 'text', text: body }] };
+  } catch (e: any) {
+    const msg = e?.message ?? String(e);
+    const detail = e?.body ? `\n${JSON.stringify(e.body, null, 2)}` : '';
+    return { isError: true, content: [{ type: 'text', text: msg + detail }] };
+  }
 });
 
 async function dispatch(name: string, pid: string, args: any): Promise<unknown> {
